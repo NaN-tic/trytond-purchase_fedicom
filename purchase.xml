@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<tryton>
+	<data>
+
+        <record model="res.group" id="group_purchase_fedicom">
+            <field name="name">Purchase Fedicom</field>
+        </record>
+
+        <record model="res.user-res.group" id="user_admin_group_purchase_fedicom">
+            <field name="user" ref="res.user_admin"/>
+            <field name="group" ref="group_purchase_fedicom"/>
+        </record>
+
+        <record model="res.user-res.group" id="user_trigger_group_purchase_fedicom">
+            <field name="user" ref="res.user_trigger"/>
+            <field name="group" ref="group_purchase_fedicom"/>
+        </record>
+
+        <record model="ir.ui.view" id="view_party_fedicom_form">
+            <field name="model">party.party</field>
+            <field name="inherit" ref="party.party_view_form" />
+            <field name="name">party_form</field>
+        </record>
+
+    </data>
+</tryton>

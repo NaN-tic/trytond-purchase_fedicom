@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- The COPYRIGHT file at the top level of this repository contains the full
+     copyright notices and license terms. -->
+<data>
+    <xpath expr="/form/notebook/page[@id='fedicom']/field[@name='fedicom_password']"
+            position="after">
+        <label name="host"/>
+        <field name="host"/>
+        <label name="port"/>
+        <field name="port"/>
+        <label name="timeout"/>
+        <field name="timeout"/>
+    </xpath>
+</data>
