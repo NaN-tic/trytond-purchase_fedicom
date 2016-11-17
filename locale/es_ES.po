@@ -2,17 +2,21 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=utf-8\n"
 
-msgctxt "field:party.party,host:"
-msgid "Host"
-msgstr "Servidor"
+msgctxt "field:party.party,fedicom_host:"
+msgid "Fedicom Host"
+msgstr "Servidor Fedicom"
 
-msgctxt "field:party.party,port:"
-msgid "Port"
-msgstr "Puerto"
+msgctxt "field:party.party,fedicom_port:"
+msgid "Fedicom Port"
+msgstr "Puerto Fedicom"
 
-msgctxt "field:party.party,timeout:"
-msgid "Timeout"
-msgstr "Tiempo de espera"
+msgctxt "field:party.party,fedicom_timeout:"
+msgid "Fedicom Timeout"
+msgstr "Tiempo de espera Fedicom"
+
+msgctxt "field:product.product,supplier_code:"
+msgid "Supplier Code"
+msgstr "Código de Proveedor"
 
 msgctxt "model:res.group,name:group_purchase_fedicom"
 msgid "Purchase Fedicom"

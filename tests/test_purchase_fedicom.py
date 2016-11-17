@@ -3,22 +3,12 @@
 # copyright notices and license terms.
 import unittest
 import trytond.tests.test_tryton
-from trytond.tests.test_tryton import test_view, test_depends
+from trytond.tests.test_tryton import ModuleTestCase
 
 
-class TestCase(unittest.TestCase):
+class TestCase(ModuleTestCase):
     'Test module'
-
-    def setUp(self):
-        trytond.tests.test_tryton.install_module('purchase_fedicom')
-
-    def test0005views(self):
-        'Test views'
-        test_view('purchase_fedicom')
-
-    def test0006depends(self):
-        'Test depends'
-        test_depends()
+    module = 'purchase_fedicom'
 
 
 def suite():
