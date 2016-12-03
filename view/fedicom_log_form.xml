@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- The COPYRIGHT file at the top level of this repository contains the full
+     copyright notices and license terms. -->
+<data>
+    <xpath expr="/form/field[@name='sale']"
+            position="after">
+        <label name="purchase"/>
+        <field name="purchase"/>
+    </xpath>
+</data>

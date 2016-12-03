@@ -22,5 +22,16 @@
             <field name="name">party_form</field>
         </record>
 
+        <record model="ir.ui.view" id="view_fedicom_log_tree">
+            <field name="model">fedicom.log</field>
+            <field name="inherit" ref="sale_fedicom.view_fedicom_log_tree" />
+            <field name="name">fedicom_log_tree</field>
+        </record>
+        <record model="ir.ui.view" id="view_fedicom_log_form">
+            <field name="model">fedicom.log</field>
+            <field name="inherit" ref="sale_fedicom.view_fedicom_log_form" />
+            <field name="name">fedicom_log_form</field>
+        </record>
+
     </data>
 </tryton>

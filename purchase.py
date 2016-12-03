@@ -1,8 +1,10 @@
 # The COPYRIGHT file at the top level of this repository contains the full
 # copyright notices and license terms.
-import socket
+import sys
+import traceback
 import logging
 from decimal import Decimal
+from trytond.modules.sale_fedicom.service.nan_socket import Socket
 from trytond.modules.sale_fedicom.service.messages.init_session \
     import InitSession
 from trytond.modules.sale_fedicom.service.messages.close_session \
@@ -17,8 +19,9 @@ from trytond.modules.sale_fedicom.service.messages.incidence_order_line \
     import IncidenceOrderLine
 from trytond.model import fields
 from trytond.pool import Pool, PoolMeta
+from trytond.transaction import Transaction
 
-__all__ = ['Party', 'Product', 'Purchase']
+__all__ = ['Party', 'Product', 'Purchase', 'FedicomLog']
 
 _ZERO = Decimal(0)
 
@@ -49,12 +52,21 @@ class Purchase:
     __metaclass__ = PoolMeta
 
     @classmethod
+    def __setup__(cls):
+        super(Purchase, cls).__setup__()
+        cls._error_messages.update({
+            'error_connecting': 'Error connecting to fedicom server.',
+            'wrong_frame': 'frame sent does not belong to next state.',
+            })
+
+    @classmethod
     def process(cls, purchases):
         for purchase in purchases:
             purchase.process_fedicom_purchase()
         super(Purchase, cls).process(purchases)
 
     def process_fedicom_purchase(self):
+        FedicomLog = Pool().get('fedicom.log')
         logger = logging.getLogger('purchase_fedicom')
 
         logger.info('Process Purchase %s From Party %s' % (
@@ -63,14 +75,30 @@ class Purchase:
         if not self.party.fedicom_host or not self.party.fedicom_port:
             return
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(self.party.fedicom_timeout or 30)
-        sock.connect((self.party.fedicom_host, self.party.fedicom_port))
+        sock = Socket()
+        sock.socket.settimeout(self.party.fedicom_timeout or 30)
+        try:
+            sock.connect(self.party.fedicom_host, self.party.fedicom_port)
+        except:
+            exc_type, exc_value = sys.exc_info()[:2]
+            logger.warning("Exception connecting to fedicom server: "
+                    "%s (%s)\n  %s"
+                % (exc_type, exc_value, traceback.format_exc()))
+            with Transaction().set_user(0):
+                with Transaction().new_cursor():
+                    FedicomLog.create([{
+                        'message': self.raise_user_error('error_connecting',
+                            raise_exception=False),
+                        'party': self.party.id,
+                        'purchase': self.id,
+                    }])
+                    Transaction().cursor.commit()
+            self.raise_user_error('error_connecting')
 
         msg = self.send_order()
-        sock.sendall(msg)
-        data = sock.recv(2048)
-        sock.close()
+        sock.send(msg)
+        data = sock.recieve()
+        sock.disconnect()
 
         self.process_message(data)
 
@@ -107,25 +135,34 @@ class Purchase:
         while i < len(msg_list) - 1:
             msg = msg_list[i]
             if not msg[0:4] in next_message:
-                logger.warning("Se ha producido un "
-                     "error, Trama enviada no pertenece al estado siguiente")
-                break
+                logger.warning("An error has occurred, "
+                    "frame sent does not belong to next state")
+                with Transaction().set_user(0):
+                    with Transaction().new_cursor():
+                        FedicomLog.create([{
+                            'message': self.raise_user_error('wrong_frame',
+                                raise_exception=False),
+                            'party': self.party.id,
+                            'purchase': self.id,
+                        }])
+                        Transaction().cursor.commit()
+                self.raise_user_error('wrong_frame')
 
             for state in next_message:
                 if msg.startswith(state):
-                    if msg.startswith('0199'):  # Close Session
-                        logger.info('Procesando Cierre de Sesion')
+                    if msg.startswith('0199'):
+                        logger.info('Processing Close Session')
                         next_message = None
                         if incidence_lines:
                             self.process_incidence(incidence_lines)
                         return
-                    elif msg.startswith('2010'):  # incidencia
-                        logger.info('Procesando Cabecera de Incidencia')
+                    elif msg.startswith('2010'):
+                        logger.info('Processing Incidence Header')
                         incidence = IncidenceHeader()
                         incidence.set_msg(msg)
                         next_message = incidence.next_state()
                     elif msg.startswith('2015'):
-                        logger.info('Procesando Linea de Incidencia')
+                        logger.info('Processing Incidence Order Line')
                         incidence_line = IncidenceOrderLine()
                         incidence_line.set_msg(msg)
                         next_message = incidence_line.next_state()
@@ -133,9 +170,17 @@ class Purchase:
                         incidence_lines[product_code] = \
                             int(incidence_line.amount_not_served)
                     else:
-                        logger.warning("Se ha producido un error. "
-                             "Trama enviada no pertenece al estado siguiente")
-                        return
+                        with Transaction().set_user(0):
+                            with Transaction().new_cursor():
+                                FedicomLog.create([{
+                                    'message': self.raise_user_error(
+                                        'wrong_frame',
+                                        raise_exception=False),
+                                    'party': self.party.id,
+                                    'purchase': self.id,
+                                }])
+                                Transaction().cursor.commit()
+                        self.raise_user_error('wrong_frame')
 
             i = i + 1
         return
@@ -144,6 +189,7 @@ class Purchase:
         pool = Pool()
         Purchase = pool.get('purchase.purchase')
         PurchaseLine = pool.get('purchase.line')
+        logger = logging.getLogger('purchase_fedicom')
 
         purchase, = Purchase.copy([self])
 
@@ -154,6 +200,9 @@ class Purchase:
                 line.quantity = (line.quantity -
                     incidence_lines[line.product.supplier_code])
                 line.save()
+            else:
+                logger.info("No result por product %s" %
+                    line.product.supplier_code)
             amount += line.amount if line.type == 'line' else _ZERO
 
         # Update cached fields
@@ -172,3 +221,10 @@ class Purchase:
             else:
                 lines_to_delete.append(line)
         PurchaseLine.delete(lines_to_delete)
+
+
+class FedicomLog:
+    __name__ = 'fedicom.log'
+    __metaclass__ = PoolMeta
+
+    purchase = fields.Many2One('purchase.purchase', 'Purchase')

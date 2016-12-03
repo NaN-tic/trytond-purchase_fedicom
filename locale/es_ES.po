@@ -2,6 +2,18 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=utf-8\n"
 
+msgctxt "error:purchase.purchase:"
+msgid "Error connecting to fedicom server."
+msgstr "Error conectando al servidor Fedicom"
+
+msgctxt "error:purchase.purchase:"
+msgid "frame sent does not belong to next state."
+msgstr "La trama enviada no corresponde con el próximo estado a recibir"
+
+msgctxt "field:fedicom.log,purchase:"
+msgid "Purchase"
+msgstr "Compra"
+
 msgctxt "field:party.party,fedicom_host:"
 msgid "Fedicom Host"
 msgstr "Servidor Fedicom"

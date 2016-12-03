@@ -10,4 +10,5 @@ def register():
         Party,
         Product,
         Purchase,
+        FedicomLog,
         module='purchase_fedicom', type_='model')
