@@ -2,13 +2,14 @@
 #copyright notices and license terms.
 
 from trytond.pool import Pool
-from .purchase import *
+import purchase
 
 
 def register():
     Pool.register(
-        Party,
-        Product,
-        Purchase,
-        FedicomLog,
+        purchase.Party,
+        purchase.Product,
+        purchase.Purchase,
+        purchase.PurchaseLine,
+        purchase.FedicomLog,
         module='purchase_fedicom', type_='model')

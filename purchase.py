@@ -21,7 +21,7 @@ from trytond.model import fields
 from trytond.pool import Pool, PoolMeta
 from trytond.transaction import Transaction
 
-__all__ = ['Party', 'Product', 'Purchase', 'FedicomLog']
+__all__ = ['Party', 'Product', 'Purchase', 'PurchaseLine', 'FedicomLog']
 
 _ZERO = Decimal(0)
 
@@ -39,12 +39,15 @@ class Product:
     __name__ = 'product.product'
     __metaclass__ = PoolMeta
 
-    supplier_code = fields.Function(fields.Char('Supplier Code'),
-        'get_supplier_code')
-
-    def get_supplier_code(self, name):
-        if self.template.product_suppliers:
-            return self.template.product_suppliers[0].code
+    def get_supplier_code(self, supplier):
+        code = self.base_code
+        if code:
+            return code
+        for product_supplier in self.template.product_suppliers:
+            if product_supplier.party == supplier and product_supplier.code:
+                code = product_supplier.code
+                return code
+        return code
 
 
 class Purchase:
@@ -57,6 +60,7 @@ class Purchase:
         cls._error_messages.update({
             'error_connecting': 'Error connecting to fedicom server.',
             'wrong_frame': 'frame sent does not belong to next state.',
+            'product_without_code': 'Product %(product)s without code',
             })
 
     @classmethod
@@ -109,8 +113,12 @@ class Purchase:
         msg += str(Order(self.party.fedicom_user, '1'))
         quantity = 0
         for line in self.lines:
-            msg += str(OrderLine(
-                line.product.supplier_code, int(line.quantity)))
+            code = line.product.get_supplier_code(self.party)
+            if code == None:
+                self.raise_user_error('product_without_code', {
+                    'product': line.product.rec_name,
+                })
+            msg += str(OrderLine(code, int(line.quantity)))
             quantity += line.quantity
         f = FinishOrder()
         f.finishOrder(str(len(self.lines)), int(quantity), 0)
@@ -166,9 +174,10 @@ class Purchase:
                         incidence_line = IncidenceOrderLine()
                         incidence_line.set_msg(msg)
                         next_message = incidence_line.next_state()
-                        product_code = incidence_line.article_code[-7:]
+                        product_code = incidence_line.article_code
                         incidence_lines[product_code] = \
-                            int(incidence_line.amount_not_served)
+                            (int(incidence_line.amount_not_served),
+                                incidence_line.incidence_code)
                     else:
                         with Transaction().set_user(0):
                             with Transaction().new_cursor():
@@ -191,18 +200,25 @@ class Purchase:
         PurchaseLine = pool.get('purchase.line')
         logger = logging.getLogger('purchase_fedicom')
 
-        purchase, = Purchase.copy([self])
 
+        # Create new purchase for missing quantities
+        purchase, = Purchase.copy([self], {'state': 'draft'})
+        print "*"*100
+        print incidence_lines
         # Update purchase quantities
         amount = Decimal('0.0')
         for line in self.lines:
-            if incidence_lines.get(line.product.supplier_code, 0) > 0:
-                line.quantity = (line.quantity -
-                    incidence_lines[line.product.supplier_code])
+            code = line.product.get_supplier_code(self.party).rjust(13, '0')
+            amount, reason = incidence_lines.get(code, (None, None))
+            if amount >= 0:
+                line.quantity = (line.quantity - amount)
+                line.fedicom_reply_state = reason
                 line.save()
             else:
-                logger.info("No result por product %s" %
-                    line.product.supplier_code)
+                logger.info("No result por product %s" % code)
+                line.quantity = 0
+                line.description = "(%s)-%s" % (reason, line.description)
+                line.save()
             amount += line.amount if line.type == 'line' else _ZERO
 
         # Update cached fields
@@ -212,15 +228,45 @@ class Purchase:
             self.untaxed_amount_cache + self.tax_amount_cache)
         self.save()
 
-        # Create new purchase for missing quantities
         lines_to_delete = []
+        lines = []
         for line in purchase.lines:
-            if incidence_lines.get(line.product.supplier_code, 0) > 0:
-                line.quantity = incidence_lines[line.product.supplier_code]
+            code = line.product.get_supplier_code(self.party).rjust(13, '0')
+            amount, reason = incidence_lines.get(code, (None, None))
+            if amount >= 0:
+                line.quantity = amount
+                line.fedicom_reply_state = reason
                 line.save()
+                lines.append(line)
             else:
                 lines_to_delete.append(line)
+
         PurchaseLine.delete(lines_to_delete)
+
+
+class PurchaseLine:
+    __name__ = 'purchase.line'
+    __metaclass__ = PoolMeta
+
+    fedicom_reply_state = fields.Selection(
+        [
+            (None, ''),
+            ('01', 'Without Stock'),
+            ('02', 'No Serve'),
+            ('03', 'Not Worked'),
+            ('04', 'Unknown'),
+            ('05', 'Drug'),
+            ('06', 'To Order'),
+            ('07', 'To Drop Out'),
+            ('08', 'Pass to Warehouse'),
+            ('09', 'New Speciality'),
+            ('10', 'Temporal Drop Out'),
+            ('11', 'Drop Out'),
+            ('12', 'To Order Ok'),
+            ('13', 'Limit Service'),
+            ('14', 'Sanity Removed'),
+        ], 'Fedicom Reply State'
+    )
 
 
 class FedicomLog:
