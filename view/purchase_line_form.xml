@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- The COPYRIGHT file at the top level of this repository contains the full
+     copyright notices and license terms. -->
+<data>
+    <xpath expr="/form/notebook/page/field[@name='margin_percent']"
+            position="after">
+        <label name="fedicom_reply_state"/>
+        <field name="fedicom_reply_state"/>
+    </xpath>
+</data>

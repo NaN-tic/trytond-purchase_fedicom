@@ -10,6 +10,10 @@ msgctxt "error:purchase.purchase:"
 msgid "frame sent does not belong to next state."
 msgstr "La trama enviada no corresponde con el próximo estado a recibir"
 
+msgctxt "error:purchase.purchase:"
+msgid "Entered quantity is not enough"
+msgstr "La cantidad establecida no es suficiente"
+
 msgctxt "field:fedicom.log,purchase:"
 msgid "Purchase"
 msgstr "Compra"

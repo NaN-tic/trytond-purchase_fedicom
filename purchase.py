@@ -23,7 +23,7 @@ from trytond.transaction import Transaction
 
 __all__ = ['Party', 'Product', 'Purchase', 'PurchaseLine', 'FedicomLog']
 
-_ZERO = Decimal(0)
+_ZERO = Decimal('0.0')
 
 
 class Party:
@@ -61,12 +61,14 @@ class Purchase:
             'error_connecting': 'Error connecting to fedicom server.',
             'wrong_frame': 'frame sent does not belong to next state.',
             'product_without_code': 'Product %(product)s without code',
+            'wrong_quantity': 'Entered quantity is not enough'
             })
 
     @classmethod
     def process(cls, purchases):
         for purchase in purchases:
             purchase.process_fedicom_purchase()
+
         super(Purchase, cls).process(purchases)
 
     def process_fedicom_purchase(self):
@@ -129,6 +131,7 @@ class Purchase:
     def process_message(self, msg):
         logger = logging.getLogger('purchase_fedicom')
         logger.info('Process Order Incidence')
+        FedicomLog = Pool().get('fedicom.log')
 
         msg_list = msg.split('\r\n')
         i = 0
@@ -136,12 +139,19 @@ class Purchase:
         init_session = InitSession()
         init_session.set_message(msg_list[i])
 
+        if msg_list[i].startswith('9999'):
+            logger.info('Processing Incidence Quantity')
+            incidence_line = IncidenceOrderLine()
+            incidence_line.set_msg(msg)
+            self.raise_user_error('wrong_quantity')
+
         i = i + 1
         next_message = init_session.next_state()
         incidence = {}
         incidence_lines = {}
         while i < len(msg_list) - 1:
             msg = msg_list[i]
+
             if not msg[0:4] in next_message:
                 logger.warning("An error has occurred, "
                     "frame sent does not belong to next state")
@@ -190,7 +200,6 @@ class Purchase:
                                 }])
                                 Transaction().cursor.commit()
                         self.raise_user_error('wrong_frame')
-
             i = i + 1
         return
 
@@ -200,32 +209,31 @@ class Purchase:
         PurchaseLine = pool.get('purchase.line')
         logger = logging.getLogger('purchase_fedicom')
 
-
         # Create new purchase for missing quantities
         purchase, = Purchase.copy([self], {'state': 'draft'})
-        print "*"*100
-        print incidence_lines
+
         # Update purchase quantities
         amount = Decimal('0.0')
         for line in self.lines:
             code = line.product.get_supplier_code(self.party).rjust(13, '0')
             amount, reason = incidence_lines.get(code, (None, None))
-            if amount >= 0:
+            if amount and amount >= 0:
                 line.quantity = (line.quantity - amount)
                 line.fedicom_reply_state = reason
                 line.save()
+                amount += line.amount if line.type == 'line' else _ZERO
             else:
                 logger.info("No result por product %s" % code)
                 line.quantity = 0
                 line.description = "(%s)-%s" % (reason, line.description)
                 line.save()
-            amount += line.amount if line.type == 'line' else _ZERO
 
         # Update cached fields
         self.untaxed_amount_cache = amount
         self.tax_amount_cache = self.get_tax_amount()
         self.total_amount_cache = (
-            self.untaxed_amount_cache + self.tax_amount_cache)
+            self.untaxed_amount_cache or Decimal(0) +
+            self.tax_amount_cache or Decimal(0))
         self.save()
 
         lines_to_delete = []
@@ -265,8 +273,12 @@ class PurchaseLine:
             ('12', 'To Order Ok'),
             ('13', 'Limit Service'),
             ('14', 'Sanity Removed'),
-        ], 'Fedicom Reply State'
+        ], 'Fedicom Reply State', readonly=True
     )
+
+    @staticmethod
+    def default_fedicom_reply_state():
+        return None
 
 
 class FedicomLog:
